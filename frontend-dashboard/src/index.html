@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloudophub | StreamlinePay</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>Cloudophub Dashboard</h1>
+        <div id="global-status">System Pulse: <span id="pulse">Scanning...</span></div>
+    </header>
+
+    <main>
+        <section class="status-grid">
+            <div class="card" id="card-ubs">
+                <h3>User & Billing (UBS)</h3>
+                <p class="status">Status: <span class="indicator">--</span></p>
+                <small>Port: 5000</small>
+            </div>
+            <div class="card" id="card-das">
+                <h3>Data API (DAS)</h3>
+                <p class="status">Status: <span class="indicator">--</span></p>
+                <small>Port: 8000</small>
+            </div>
+            <div class="card" id="card-dis">
+                <h3>Data Ingest (DIS)</h3>
+                <p class="status">Status: <span class="indicator">--</span></p>
+                <small>Port: 8001</small>
+            </div>
+        </section>
+
+        <section class="actions">
+            <h2>Quick Controls</h2>
+            <button onclick="triggerIngest('shopify')">Run Shopify Ingest</button>
+            <button onclick="fetchUsers()">Refresh User List</button>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
