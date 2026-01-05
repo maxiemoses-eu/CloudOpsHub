@@ -1,4 +1,3 @@
-# test_ubs.py
 import unittest
 import json
 from ubs import app, db, User
@@ -8,7 +7,8 @@ class UBSTestCase(unittest.TestCase):
     def setUp(self):
         # Configure the app for testing
         app.config['TESTING'] = True
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' # Use in-memory DB for tests
+        # Use in-memory SQLite for high-speed unit testing
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:' 
         self.app = app.test_client()
         
         with app.app_context():
@@ -20,7 +20,7 @@ class UBSTestCase(unittest.TestCase):
             db.drop_all()
 
     def test_a_create_user_success(self):
-        # Test creation of a new user
+        """Test successful user creation via POST /users"""
         response = self.app.post(
             '/users',
             data=json.dumps({
@@ -35,27 +35,35 @@ class UBSTestCase(unittest.TestCase):
         self.assertEqual(data['subscription_plan'], 'Free')
 
     def test_b_get_user_success(self):
-        # First create a user
+        """Test retrieving a specific user via GET /users/<id>"""
+        # First, manually inject a user into the test DB
         with app.app_context():
             user = User(username='testuser', email='test@test.com')
             db.session.add(user)
             db.session.commit()
             user_id = user.id
 
-        # Then retrieve the user
+        # Then retrieve the user via the API
         response = self.app.get(f'/users/{user_id}')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data.decode('utf-8'))
         self.assertEqual(data['username'], 'testuser')
 
-    def test_c_health_status(self):
-        # Test the health check endpoint
-        response = self.app.get('/status')
+    def test_c_liveness_probe(self):
+        """Standardized Liveness Check: Test /health endpoint"""
+        response = self.app.get('/health')
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data.decode('utf-8'))
-        self.assertIn('status', data)
-        # Note: db_connected may be false since we are using in-memory for tests, 
-        # but the request itself is successful.
+        self.assertEqual(data['status'], 'alive')
+
+    def test_d_readiness_probe(self):
+        """Standardized Readiness Check: Test /ready endpoint (DB connection)"""
+        # Since we use in-memory SQLite, this should return 200/ready
+        response = self.app.get('/ready')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data.decode('utf-8'))
+        self.assertEqual(data['status'], 'ready')
+        self.assertTrue(data['db_connected'])
 
 if __name__ == '__main__':
     unittest.main()

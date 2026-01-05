@@ -1,27 +1,23 @@
-# Dockerfile.ubs
-FROM python:3.11-slim
-
-# Set environment variables for the application
-ENV FLASK_APP=ubs.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_RUN_PORT=5000
-
-# Set working directory inside the container
+# Stage 1: Build dependencies
+FROM python:3.11-slim-bullseye AS builder
 WORKDIR /app
-
-# Copy dependency files
 COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Install dependencies
-# We use psycopg2-binary for PostgreSQL connectivity
-RUN pip install --no-cache-dir -r requirements.txt
+# Stage 2: Final Runtime
+FROM python:3.11-slim-bullseye
+RUN groupadd -r cloudop && useradd -r -g cloudop cloudop
+WORKDIR /app
+COPY --from=builder /root/.local /home/cloudop/.local
+COPY . .
+ENV PATH=/home/cloudop/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PORT=5000
 
-# Copy application code
-COPY ubs.py .
-COPY test_ubs.py .
+RUN chown -R cloudop:cloudop /app
+USER cloudop
 
-# Expose the application port
 EXPOSE 5000
 
-# Command to run the service
-CMD ["flask", "run"]
+# Use Gunicorn for production-grade serving
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "ubs:app"]

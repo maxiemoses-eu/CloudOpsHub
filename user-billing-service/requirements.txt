@@ -1,4 +1,14 @@
-Flask==2.3.3
-Flask-SQLAlchemy==3.0.5
+# Web Framework & ORM
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.23
+
+# Database Driver (PostgreSQL)
 psycopg2-binary==2.9.9
-gunicorn==20.1.0  # Optional: for production deployment
+
+# Production Server (WSGI)
+gunicorn==21.2.0
+
+# Validation & Utilities (Recommended for StreamlinePay standards)
+pydantic==2.5.2
+email-validator==2.1.0.post1
