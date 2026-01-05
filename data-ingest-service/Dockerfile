@@ -1,25 +1,19 @@
-# Dockerfile.dis
-FROM python:3.11-slim
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV FASTAPI_PORT=8001
-
-# Set working directory
+# Stage 1: Build
+FROM python:3.11-slim-bullseye AS builder
 WORKDIR /app
-
-# Copy dependency files
 COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Install dependencies (FastAPI + Uvicorn for serving)
-RUN pip install --no-cache-dir fastapi uvicorn
-
-# Copy application code
-COPY dis.py .
-COPY test_dis.py .
-
-# Expose the application port
+# Stage 2: Runtime
+FROM python:3.11-slim-bullseye
+RUN groupadd -r cloudop && useradd -r -g cloudop cloudop
+WORKDIR /app
+COPY --from=builder /root/.local /home/cloudop/.local
+COPY . .
+ENV PATH=/home/cloudop/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8001
+RUN chown -R cloudop:cloudop /app
+USER cloudop
 EXPOSE 8001
-
-# Command to run the service using Uvicorn
 CMD ["uvicorn", "dis:app", "--host", "0.0.0.0", "--port", "8001"]

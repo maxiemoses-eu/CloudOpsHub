@@ -1,26 +1,23 @@
+# Stage 1: Build
+FROM python:3.11-slim-bullseye AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Stage 2: Final
 FROM python:3.11-slim-bullseye
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=aps.py
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_RUN_PORT=5001
-
-# Set working directory
+RUN groupadd -r cloudop && useradd -r -g cloudop cloudop
 WORKDIR /app
 
-# Copy dependency files
-COPY requirements.txt .
+COPY --from=builder /root/.local /home/cloudop/.local
+COPY . .
 
-# Install dependencies (Flask)
-RUN pip install --no-cache-dir flask
+ENV PATH=/home/cloudop/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PORT=5000
+RUN chown -R cloudop:cloudop /app
 
-# Copy application code
-COPY aps.py .
-COPY test_aps.py .
+USER cloudop
+EXPOSE 5000
 
-# Expose the application port
-EXPOSE 5001
-
-# Command to run the service using Flask
-CMD ["flask", "run"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "aps:app"]

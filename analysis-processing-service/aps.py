@@ -1,39 +1,38 @@
-# aps.py - Analytics Processing Service
 from flask import Flask, jsonify
-import time
 import os
+import time
+import random
 
 app = Flask(__name__)
 
-# --- Configuration Placeholder ---
-DATA_QUEUE_SOURCE = os.environ.get('DATA_QUEUE_SOURCE', 'kafka-topic-raw')
-DATA_STORE_TARGET = os.environ.get('DATA_STORE_TARGET', 'clickhouse-db:9000')
+# Config - Aligned with Helm Port
+PORT = int(os.environ.get('PORT', 5000))
 
-# --- Worker Logic ---
-def process_data_batch(batch_size: int = 100):
-    """Simulates the actual processing of a batch of data."""
-    print(f"Processing {batch_size} events from {DATA_QUEUE_SOURCE}...")
-    # 1. Read a batch of data from the queue
-    # 2. Run calculations (e.g., Pandas logic, SQL queries for aggregation)
-    # 3. Write aggregated results to DATA_STORE_TARGET
-    time.sleep(random.uniform(1.0, 3.0)) 
-    print("Batch processing complete.")
-    return batch_size
+@app.route('/health', methods=['GET'])
+def health():
+    """Liveness Probe: Confirms the container is running."""
+    return jsonify({"status": "alive"}), 200
 
-# --- API Endpoints ---
+@app.route('/ready', methods=['GET'])
+def ready():
+    """Readiness Probe: Confirms the service is ready to accept traffic."""
+    # Add logic here to check DB connection if needed
+    return jsonify({"status": "ready"}), 200
 
 @app.route('/status', methods=['GET'])
 def status():
-    # Health check for the worker service
-    return jsonify({'status': 'OK', 'processing_target': DATA_STORE_TARGET, 'mode': 'worker'})
+    """General metadata endpoint."""
+    return jsonify({
+        "service": "cloudopshub-aps",
+        "redis_connected": bool(os.environ.get('REDIS_URI')),
+        "status": "ok"
+    }), 200
 
 @app.route('/trigger_process', methods=['POST'])
 def trigger_process():
-    # Allows a scheduled job or manual trigger to start a processing run
-    process_data_batch(batch_size=500)
-    return jsonify({'message': 'Processing batch triggered successfully.'}), 200
+    """Simulated batch processing."""
+    time.sleep(random.uniform(0.1, 0.3))
+    return jsonify({'message': 'Processed 500 events successfully.'}), 200
 
 if __name__ == '__main__':
-    # Typically, the worker loop would run here, but for K8s deployment,
-    # we usually start the worker via a separate K8s job or just run the Flask app
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=PORT)

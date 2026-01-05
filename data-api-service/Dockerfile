@@ -1,25 +1,19 @@
-# Dockerfile.das
-FROM python:3.11-slim
-
-# Set environment variables
-ENV PYTHONUNBUFFERED 1
-ENV FASTAPI_PORT=8000
-
-# Set working directory
+# Stage 1: Builder
+FROM python:3.11-slim-bullseye AS builder
 WORKDIR /app
-
-# Copy dependency files
 COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Install dependencies (only FastAPI and Uvicorn needed for this service)
-RUN pip install --no-cache-dir fastapi uvicorn
-
-# Copy application code
-COPY das.py .
-COPY test_das.py .
-
-# Expose the application port
+# Stage 2: Final Runtime
+FROM python:3.11-slim-bullseye
+RUN groupadd -r cloudop && useradd -r -g cloudop cloudop
+WORKDIR /app
+COPY --from=builder /root/.local /home/cloudop/.local
+COPY . .
+ENV PATH=/home/cloudop/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+RUN chown -R cloudop:cloudop /app
+USER cloudop
 EXPOSE 8000
-
-# Command to run the service using Uvicorn (a fast ASGI server)
 CMD ["uvicorn", "das:app", "--host", "0.0.0.0", "--port", "8000"]
