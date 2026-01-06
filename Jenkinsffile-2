@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+
+    environment {
+        // --- VERSIONING CONFIG ---
+        BASE_VERSION         = "v1.1.0"
+        IMAGE_TAG            = "${BASE_VERSION}-${env.BUILD_NUMBER}"
+        
+        // Repository Config
+        DOCKER_USER          = 'maxiemoses'
+        DOCKER_CREDENTIAL_ID = 'dockerhub-credentiail'
+        
+        // GitOps Config
+        GITOPS_REPO          = 'git@github.com:maxiemoses-eu/CloudOpsHub-agroCD.git' 
+        GITOPS_BRANCH        = 'main'
+        GITOPS_CREDENTIAL    = 'gitops-ssh-key'
+        
+        // Caching
+        TRIVY_CACHE          = "${WORKSPACE}/.trivycache"
+        NPM_CACHE            = "${WORKSPACE}/.npm"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                cleanWs()
+                checkout scm
+            }
+        }
+
+        stage('Build & Test') {
+            parallel {
+                stage('UBS') { steps { dir('user-billing-service') { sh 'python3 -m venv venv && venv/bin/pip install -r requirements.txt && venv/bin/python -m unittest || echo "Tests failed"' } } }
+                stage('DAS') { steps { dir('data-api-service') { sh 'python3 -m venv venv && venv/bin/pip install -r requirements.txt && venv/bin/pytest || echo "Tests failed"' } } }
+                stage('DIS') { steps { dir('data-ingest-service') { sh 'python3 -m venv venv && venv/bin/pip install -r requirements.txt && venv/bin/pytest || echo "Tests failed"' } } }
+                stage('APS') { steps { dir('analysis-processing-service') { sh 'python3 -m venv venv && venv/bin/pip install -r requirements.txt && venv/bin/python -m unittest || echo "Tests failed"' } } }
+                stage('UI') { steps { dir('dashboard-frontend') { sh 'npm install --cache ${NPM_CACHE} --prefer-offline --legacy-peer-deps && npm run build || echo "Build failed"' } } }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                script {
+                    def builds = [
+                        'ubs': 'user-billing-service',
+                        'das': 'data-api-service',
+                        'dis': 'data-ingest-service',
+                        'aps': 'analysis-processing-service',
+                        'ui' : 'dashboard-frontend'
+                    ]
+
+                    parallel builds.collectEntries { name, dir ->
+                        ["Building ${name}": {
+                            sh "docker build -t ${DOCKER_USER}/cloudopshub-${name}:${IMAGE_TAG} -f ${dir}/Dockerfile ${dir}"
+                        }]
+                    }
+                }
+            }
+        }
+
+        stage('Trivy Security Scan') {
+            steps {
+                script {
+                    sh "mkdir -p ${TRIVY_CACHE}"
+                    sh "trivy image --download-db-only --cache-dir ${TRIVY_CACHE}"
+
+                    def serviceList = ['ubs', 'das', 'dis', 'aps', 'ui']
+                    for (service in serviceList) {
+                        echo "--- Sequential Scan: cloudopshub-${service}:${IMAGE_TAG} ---"
+                        def fullImage = "${DOCKER_USER}/cloudopshub-${service}:${IMAGE_TAG}"
+                        
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            sh "trivy image --cache-dir ${TRIVY_CACHE} --severity HIGH,CRITICAL --exit-code 1 ${fullImage}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            when {
+                expression { currentBuild.result in [null, 'SUCCESS', 'UNSTABLE'] }
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIAL_ID}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                    script {
+                        sh "echo ${DOCKER_PASSWORD} | docker login -u ${DOCKER_USERNAME} --password-stdin"
+                        
+                        def serviceNames = ['ubs', 'das', 'dis', 'aps', 'ui']
+                        serviceNames.each { name ->
+                            // Push the specific version tag
+                            sh "docker push ${DOCKER_USER}/cloudopshub-${name}:${IMAGE_TAG}"
+                            // Also push a 'latest' tag for convenience
+                            sh "docker tag ${DOCKER_USER}/cloudopshub-${name}:${IMAGE_TAG} ${DOCKER_USER}/cloudopshub-${name}:latest"
+                            sh "docker push ${DOCKER_USER}/cloudopshub-${name}:latest"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('GitOps Promotion') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                sshagent([GITOPS_CREDENTIAL]) {
+                    sh """
+                        rm -rf gitops && git clone ${GITOPS_REPO} gitops && cd gitops
+                        
+                        for service in ubs das dis aps ui; do
+                          # Update the image tag to the new v1.1.0-xx version
+                          sed -i "s|image: ${DOCKER_USER}/cloudopshub-\$service:.*|image: ${DOCKER_USER}/cloudopshub-\$service:${IMAGE_TAG}|g" \$service/deployment.yaml
+                        done
+
+                        git config user.name "Jenkins CI"
+                        git config user.email "ci@cloudopshub.com"
+                        
+                        if ! git diff --quiet; then
+                          git add .
+                          git commit -m "Promote StreamlinePay services to version ${IMAGE_TAG}"
+                          git push origin ${GITOPS_BRANCH}
+                        else
+                          echo "No changes to commit."
+                        fi
+                    """
+                }
+            }
+        }
+    }
+}

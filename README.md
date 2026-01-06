@@ -23,6 +23,7 @@ The project is broken down into modular services. Each folder is self-contained 
     Frontend Dashboard/: Nginx-based UI. It serves the static assets and acts as a reverse proxy to route /api calls to the backends.
 
     user-billing-service/: Manages user accounts and the Postgres database connection.
+    
 
 CI/CD Workflow (Jenkins + ArgoCD)
 
